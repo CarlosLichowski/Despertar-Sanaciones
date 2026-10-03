@@ -1,0 +1,184 @@
+rules_version = '2';
+
+// ===============================================================
+// Cloud Firestore Security Rules - Despertar Sanaciones
+// ===============================================================
+//
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: courses
+// Document ID: auto-generated or slug string (e.g. 'course-171...', 'reiki-usui-tradicional')
+// Fields:
+//   - badge: string (required, 1-100 chars) - Tag/Badge display e.g. "FORMACIÓN CUÁNTICA"
+//   - modality: string (required, 1-100 chars) - Delivery mode e.g. "Presencial y Online"
+//   - title: string (required, 1-200 chars) - Title of the course
+//   - description: string (required, 1-5000 chars) - Detailed description & syllabus
+//   - linkText: string (optional, 0-200 chars) - Custom link call-to-action text
+//   - category: string (optional, 0-100 chars) - Course category tag
+//   - order: number (optional, 0-10000) - Sorting sequence for frontend display
+//   - duration: string (optional, 0-100 chars) - Course duration or level details
+//   - id: string (optional, 1-100 chars, immutable) - Identifier string
+//
+// Collection: news
+// Document ID: auto-generated or slug string (e.g. 'news-171...', 'iniciacion-reiki-usui')
+// Fields:
+//   - title: string (required, 1-250 chars) - News headline
+//   - summary: string (required, 1-3000 chars) - Excerpt / short description
+//   - category: string (required, 1-100 chars) - Tag e.g. "Formaciones", "Avisos & Turnos"
+//   - date: string (required, 1-100 chars) - Human-readable or formatted date
+//   - active: bool (required) - Publication toggle flag
+//   - content: string (optional, 0-20000 chars) - Full article body
+//   - author: string (optional, 0-150 chars) - Author name e.g. "Silvia Villanueva"
+//   - imageUrl: string (optional, 0-1000 chars) - Article image URL
+//   - createdAt: string (optional, 0-100 chars, immutable) - ISO creation timestamp
+//   - id: string (optional, 1-100 chars, immutable) - News item identifier
+//
+// Collection: inquiries
+// Document ID: auto-generated string (e.g. 'inq-171829384920')
+// Fields:
+//   - fullName: string (required, 1-150 chars) - Contact full name
+//   - whatsapp: string (required, 6-50 chars) - Phone / WhatsApp number
+//   - serviceType: string (required, 1-200 chars) - Requested service / course title
+//   - modality: string (required, 'Presencial' | 'A Distancia / Virtual')
+//   - status: string (required, 'nueva' on create; 'nueva'|'atendida'|'archivada' on update)
+//   - createdAt: string (required, 10-50 chars, immutable) - ISO creation timestamp
+//   - email: string (optional, 0-150 chars, valid email or empty string)
+//   - message: string (optional, 0-3000 chars) - Inquiry note or user comment
+//   - id: string (optional, 1-100 chars, immutable) - Inquiry ID
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is made by an authenticated Firebase user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check that the document contains all required keys
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Enforce strict schema with no extraneous/injected keys
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Verify that an existing field is not altered or removed on update
+    function isImmutableFieldUnchanged(field) {
+      return !(field in resource.data) ||
+        ((field in request.resource.data) && request.resource.data[field] == resource.data[field]);
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Validate optional email (allows empty string from contact form or valid email)
+    function isValidInquiryEmail(email) {
+      return email is string &&
+        email.size() <= 150 &&
+        (email == '' || isValidEmail(email));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validate Course entity
+    function isValidCourse(data) {
+      return hasOnlyAllowedFields(['badge', 'modality', 'title', 'description', 'linkText', 'category', 'order', 'duration', 'id']) &&
+        hasRequiredFields(['badge', 'modality', 'title', 'description']) &&
+        data.badge is string && data.badge.size() >= 1 && data.badge.size() <= 100 &&
+        data.modality is string && data.modality.size() >= 1 && data.modality.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 5000 &&
+        (!('linkText' in data) || (data.linkText is string && data.linkText.size() <= 200)) &&
+        (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+        (!('duration' in data) || (data.duration is string && data.duration.size() <= 100)) &&
+        (!('order' in data) || (data.order is number && data.order >= 0 && data.order <= 10000)) &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 100));
+    }
+
+    // Validate News publication entity
+    function isValidNews(data) {
+      return hasOnlyAllowedFields(['title', 'summary', 'category', 'date', 'active', 'content', 'author', 'imageUrl', 'createdAt', 'id']) &&
+        hasRequiredFields(['title', 'summary', 'category', 'date', 'active']) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 250 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 3000 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 100 &&
+        data.date is string && data.date.size() >= 1 && data.date.size() <= 100 &&
+        data.active is bool &&
+        (!('content' in data) || (data.content is string && data.content.size() <= 20000)) &&
+        (!('author' in data) || (data.author is string && data.author.size() <= 150)) &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 100));
+    }
+
+    // Validate Inquiry message entity
+    function isValidInquiry(data) {
+      return hasOnlyAllowedFields(['id', 'fullName', 'whatsapp', 'email', 'serviceType', 'modality', 'message', 'createdAt', 'status']) &&
+        hasRequiredFields(['fullName', 'whatsapp', 'serviceType', 'modality', 'createdAt', 'status']) &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 150 &&
+        data.whatsapp is string && data.whatsapp.size() >= 6 && data.whatsapp.size() <= 50 &&
+        data.serviceType is string && data.serviceType.size() >= 1 && data.serviceType.size() <= 200 &&
+        data.modality is string && (data.modality == 'Presencial' || data.modality == 'A Distancia / Virtual') &&
+        data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 50 &&
+        (!('email' in data) || isValidInquiryEmail(data.email)) &&
+        (!('message' in data) || (data.message is string && data.message.size() <= 3000)) &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 100));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. Courses Collection:
+    // - Public read access for prospective students & landing page visitors.
+    // - Admin-only (authenticated) create, update, and delete access.
+    // - Validator Function Pattern enforced on create AND update.
+    match /courses/{courseId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidCourse(request.resource.data);
+      allow update: if isAuthenticated() && isValidCourse(request.resource.data) && isImmutableFieldUnchanged('id');
+      allow delete: if isAuthenticated();
+    }
+
+    // 2. News & Blog Collection:
+    // - Public read access for news, workshops, and schedule updates.
+    // - Admin-only (authenticated) create, update, and delete access.
+    // - Validator Function Pattern enforced on create AND update.
+    match /news/{newsId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidNews(request.resource.data);
+      allow update: if isAuthenticated() && isValidNews(request.resource.data) && isImmutableFieldUnchanged('id') && isImmutableFieldUnchanged('createdAt');
+      allow delete: if isAuthenticated();
+    }
+
+    // 3. Inquiries Collection:
+    // - Public create access: anyone can submit the contact form with valid fields and initial 'nueva' status.
+    // - Strictly restricted read, update, and delete access to authenticated administrators (protects client PII).
+    // - Validator Function Pattern enforced on create AND update with immutable timestamp protection.
+    match /inquiries/{inquiryId} {
+      allow read: if isAuthenticated();
+      allow create: if isValidInquiry(request.resource.data) && request.resource.data.status == 'nueva';
+      allow update: if isAuthenticated() && isValidInquiry(request.resource.data) && (request.resource.data.status in ['nueva', 'atendida', 'archivada']) && isImmutableFieldUnchanged('createdAt') && isImmutableFieldUnchanged('id');
+      allow delete: if isAuthenticated();
+    }
+
+    // Default Deny: Deny all reads/writes by default for any unspecified documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
