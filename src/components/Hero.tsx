@@ -1,5 +1,6 @@
 import React from 'react';
 import { MessageCircle, ArrowDown, Sparkles, HeartHandshake, Award, Sun } from 'lucide-react';
+import logo from '../assets/logo.jpeg'
 
 interface HeroProps {
   onExploreClick: () => void;
@@ -103,7 +104,7 @@ export const Hero: React.FC<HeroProps> = ({ onExploreClick }) => {
               {/* Main image container */}
               <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white shadow-floating bg-stone-100 aspect-[4/5] sm:aspect-[3/4]">
                 <img
-                  src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80"
+                  src={logo}
                   alt="Espacio Holístico de Sanación y Paz"
                   className="w-full h-full object-cover object-center transform hover:scale-105 transition-transform duration-700"
                 />
